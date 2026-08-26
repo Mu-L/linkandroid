@@ -4,8 +4,9 @@ import ListerTop from '../components/common/ListerTop.vue'
 import {t} from '../lang'
 import {Dialog} from '../lib/dialog'
 import {mapError} from '../lib/error'
+import {parseIPPort} from '../lib/linkandroid'
 import {useDeviceStore} from '../store/modules/device'
-import {EnumDeviceStatus} from '../types/Device'
+import {EnumDeviceStatus, EnumDeviceType} from '../types/Device'
 import {testActionSet, testActionUnset} from '../utils/test'
 import DeviceAdbShellDialog from './Device/DeviceAdbShellDialog.vue'
 import DeviceCameraDialog from './Device/DeviceCameraDialog.vue'
@@ -103,6 +104,32 @@ const doBatchAction = async (action: string) => {
             if (device && device.status === EnumDeviceStatus.CONNECTED) {
                 deviceStore.doMirror(device)
             }
+        }
+        batchActionType.value = ''
+    } else if (action === 'connect') {
+        // 批量连接网络设备
+        Dialog.loadingOn(t('device.connecting'))
+        let successCount = 0
+        try {
+            for (const id of deviceIds) {
+                const device = deviceStore.records.find((r) => r.id === id)
+                if (device && device.type === EnumDeviceType.WIFI && device.status === EnumDeviceStatus.DISCONNECTED) {
+                    try {
+                        const {ip, port} = parseIPPort(id)
+                        await window.$mapi.adb.connect(ip, port)
+                        successCount++
+                    } catch {
+                        // 单个设备连接失败不阻断，继续连接其他设备
+                    }
+                }
+            }
+        } finally {
+            Dialog.loadingOff()
+        }
+        if (successCount > 0) {
+            Dialog.tipSuccess(t('device.batchConnectSuccess', {count: successCount}))
+        } else {
+            Dialog.tipError(t('device.batchConnectFailed'))
         }
         batchActionType.value = ''
     }
@@ -239,6 +266,12 @@ onUnmounted(() => {
                                     <i-lucide-monitor />
                                 </template>
                                 {{ $t('device.mirrorToComputer') }}
+                            </a-doption>
+                            <a-doption value="connect">
+                                <template #icon>
+                                    <i-lucide-link />
+                                </template>
+                                {{ $t('device.batchConnect') }}
                             </a-doption>
                         </template>
                     </a-dropdown>
