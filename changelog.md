@@ -1,22 +1,25 @@
 ## [Unreleased]
 
-- 新增：数据目录支持 `LINKANDROID_DATA_ROOT` 环境变量覆盖（优先级：环境变量 > client.json dataRoot > 默认 ~/.linkandroid/data），正式安装版可由 macOS Info.plist 的 LSEnvironment 注入该变量，实现正式使用数据与开发测试完全隔离
-- 优化：client.json 数据目录字段名由 `dataPath` 统一改为 `dataRoot`；应用启动时 `userData`、`appData` 均指向数据根目录，后续所有数据统一存储在该目录（Go CLI 同步支持环境变量优先级）
-- 修复：任务脚本 `la.find()` 未找到元素时返回 None，脚本直接调用 `.click()` 会报晦涩的 `AttributeError: 'NoneType' object has no attribute 'click'`；现改为抛出带清晰中文提示的 `ElementNotFoundError`（含选择器信息与排查建议）
-- 新增：任务脚本新增 `la.findOrNull()` / `la.findOrNone()` API，未找到元素时返回 None（不抛异常），配合判空使用
-- 新增：`la.ElementNotFoundError` 异常对外导出，脚本可用 `except la.ElementNotFoundError` 捕获
-- 优化：AI 生成任务代码约束强化，禁止 `device.find(...).click()` 链式调用，点击优先使用 `tapText` / `tapId` / `tapDesc` / `tapExists`
-- 优化：任务脚本使用手册（Manual.md）更新 `find()` / `findOrNull()` 说明与安全点击示例
-- 修复：CLI/HTTP 远程执行任务时未注入设备环境变量导致连接失败（如提示 "127.0.0.1 not online"），现自动选择 adb 在线设备（USB 优先）并注入设备信息，与界面手动执行行为一致
-- 新增：task run 支持 --device 参数，/api/task/run 接口支持可选 deviceId 参数；无在线设备时返回明确错误提示
-- 新增：任务「运行设置」支持保存目标设备配置（多设备或所有设备），定时任务、手动运行、CLI/API 执行均按保存的配置执行
-- 优化：任务编辑器编辑/复制时自动恢复已保存的运行设置，确认设备后立即持久化到任务
-- 优化：任务目标设备解析优先级统一为「显式指定 > 任务绑定 > 自动发现」
-- 新增：设备页批量操作新增「批量连接」，批量选中后可一键连接断开的网络设备，完成后提示已成功连接台数，单个设备失败不阻断其余设备
-- 修复：投屏失败（如 adb 无法启动）此前因 scrcpy 版本 banner 输出到 stdout 而被静默吞掉，用户只看到设备已连接却无任何报错；现 stderr 中出现错误信息时立即弹出「投屏失败」并展示详细日志，不再被 banner 掩盖
-- 新增：设备页顶部「更多」菜单新增「投屏诊断」入口，打开「投屏诊断」弹窗后自动执行 adb 可执行文件检查、adb version 运行测试（可识别退出码 3221226505/杀毒拦截）、scrcpy 可执行文件检查、5037 端口占用检测（Windows 用 netstat、macOS/Linux 用 lsof）以及 adb devices 设备列表，兼容多系统，帮助定位投屏失败原因
-- 优化：设备页全部下拉菜单项增加图标（连接/断开、开启网络、摄像头、OTG、命令行、置顶、设置、删除、分组设置、默认设置、诊断等），菜单可读性更佳
-- 修复：随动（Follow）功能在连接多台设备时失效。根因：① Electron 主进程 spawnShell 在 Windows 上把 scrcpy 退出码 1 误判为「成功退出」，导致 DeviceManage 后台接收端启动失败（adb reverse 端口冲突导致 scrcpy-server 连接失败、退出码 1）时被静默吞掉、不触发重试也无任何提示；② 多台设备同时启动 DeviceManage 并发抢占 adb 端口，除个别设备外几乎全部失败，随动事件转发时没有目标接收端在线。修复：DeviceManage 启动改为串行错峰队列（每台间隔 400ms），启动失败自动识别（按进程退出码判断非 0 即失败）并在设备仍连接时 3 秒后自动重试，用户主动停止（面板关闭/设备断开）不会误触发重试，设备重连后自动恢复
+### 新增
+- 新增：数据目录支持 `LINKANDROID_DATA_ROOT` 环境变量覆盖，正式安装版可由 macOS Info.plist 注入，实现正式数据与开发测试隔离
+- 新增：任务脚本新增 `la.findOrNull()` / `la.findOrNone()` API（未找到元素返回 None）及 `la.ElementNotFoundError` 异常导出，使用手册同步更新
+- 新增：task run 支持 `--device` 参数、`/api/task/run` 支持可选 deviceId；无在线设备时返回明确错误提示
+- 新增：任务「运行设置」支持保存目标设备配置（多设备/所有设备），定时、手动、CLI/API 执行均按配置执行
+- 新增：设备页批量操作新增「批量连接」，可一键批量连接断开的网络设备
+- 新增：设备页「更多」菜单新增「投屏诊断」入口，自动检查 adb/scrcpy/端口/设备列表等，帮助定位投屏失败原因
+
+### 优化
+- 优化：client.json 数据目录字段统一改为 `dataRoot`，userData/appData 均指向数据根目录（Go CLI 同步支持）
+- 优化：AI 生成任务代码约束强化，点击操作优先使用 tapText/tapId/tapDesc/tapExists，禁止链式 `.click()`
+- 优化：任务目标设备解析优先级统一为「显式指定 > 任务绑定 > 自动发现」，编辑/复制时自动恢复已保存的运行设置
+- 优化：设备页全部下拉菜单项增加图标，菜单可读性更佳
+- 优化：启动日志新增版本号与构建时间（`LaunchInfo` 输出 `version` 与 `buildId`），便于确认运行的版本是否包含最新修复
+
+### 修复
+- 修复：任务脚本 `la.find()` 未找到元素时不再静默返回 None 导致晦涩报错，现抛出带清晰中文提示的 `ElementNotFoundError`
+- 修复：CLI/HTTP 远程执行任务时未注入设备环境变量导致连接失败，现自动选择 adb 在线设备（USB 优先）并注入
+- 修复：投屏失败（如 adb 无法启动）此前被 scrcpy 版本 banner 静默吞掉，现 stderr 出现错误时立即弹出「投屏失败」并展示详细日志
+- 修复：随动（Follow）在连接多台设备时失效——DeviceManage 启动失败被静默吞掉、多台并发抢占 adb 端口导致接收端缺失；现改为串行错峰启动、失败自动重试、设备重连自动恢复
 
 ## v2.1.0 scrcpy升级至4.1，投屏新增息屏/亮屏控制
 

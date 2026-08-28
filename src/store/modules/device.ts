@@ -267,8 +267,13 @@ const startDeviceManage = async (deviceId: string) => {
     await task
 }
 
-// DeviceManage 启动失败后自动重试（设备仍保持连接且未被主动停止时）
+// DeviceManage 启动失败后自动重试（设备仍保持连接且未被主动停止时）。
+// 采用指数退避：3s → 6s → 12s → ... 上限 60s，避免持续高频重试
+const deviceManageRetryCount = new Map<string, number>()
 const scheduleDeviceManageRetry = (deviceId: string) => {
+    const count = deviceManageRetryCount.get(deviceId) || 0
+    const delay = Math.min(3000 * Math.pow(2, count), 60000)
+    deviceManageRetryCount.set(deviceId, count + 1)
     setTimeout(() => {
         if (!deviceManageStopped.has(deviceId)) {
             const device = deviceStore().records.find((r) => r.id === deviceId)
@@ -276,7 +281,7 @@ const scheduleDeviceManageRetry = (deviceId: string) => {
                 startDeviceManage(deviceId)
             }
         }
-    }, 3000)
+    }, delay)
 }
 
 // 启动 debug_manage（管理模式：预览+无视频音频播放）
@@ -289,6 +294,9 @@ const doStartDeviceManage = async (deviceId: string) => {
         // 如果已经在运行,先停止
         if (deviceControllers.has(deviceId)) {
             await stopDeviceManage(deviceId)
+            // stopDeviceManage 会打上 stopped 标记（用于避免旧进程退出触发重试），
+            // 替换完成后必须清除，否则新进程异常退出时会被当成"主动停止"而不重试
+            deviceManageStopped.delete(deviceId)
         }
 
         const wsAddress = await $mapi.serve.getAddress()
@@ -347,6 +355,8 @@ const doStartDeviceManage = async (deviceId: string) => {
             },
         )
         deviceControllers.set(deviceId, controller)
+        // 启动成功，重置失败重试计数
+        deviceManageRetryCount.delete(deviceId)
     } catch (error) {
         window.$mapi.log.error('Failed to start debug_manage:', {deviceId, error})
         if (!deviceManageStopped.has(deviceId)) {
@@ -358,6 +368,8 @@ const doStartDeviceManage = async (deviceId: string) => {
 const stopDeviceManage = async (deviceId: string) => {
     // 标记为主动停止，避免强杀进程后的非 0 退出码触发自动重试
     deviceManageStopped.add(deviceId)
+    // 重置失败重试计数，避免后续重连后沿用旧的退避间隔
+    deviceManageRetryCount.delete(deviceId)
     const controller = deviceControllers.get(deviceId)
     if (controller) {
         try {

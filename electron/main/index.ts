@@ -18,7 +18,7 @@ import {ConfigTray} from '../config/tray'
 import {WindowConfig} from '../config/window'
 import {DevToolsManager} from '../lib/devtools'
 import {isMac, isPackaged} from '../lib/env'
-import {preloadDefault, rendererLoadPath} from '../lib/env-main'
+import {preloadDefault, rendererDistPath, rendererLoadPath} from '../lib/env-main'
 import {executeHooks} from '../lib/hooks'
 import {AppsMain} from '../mapi/app/main'
 import {reportError} from '../mapi/log/beacon'
@@ -76,6 +76,17 @@ if (!app.requestSingleInstanceLock()) {
 
 const hasSplashWindow = true
 
+// 读取构建信息（build.json 中的 buildId：构建时的北京时间 YYYYMMDDHHMMSS，
+// 用于日志中确认运行的版本是否包含最新修复）
+const readBuildId = (): string => {
+    try {
+        const json = fs.readFileSync(rendererDistPath('build.json'), 'utf8')
+        return JSON.parse(json).buildId || 'unknown'
+    } catch (e) {
+        return 'Development'
+    }
+}
+
 AppEnv.appRoot = process.env.APP_ROOT
 
 // userData / appData 保持 Electron 系统默认位置（框架数据，如缓存、session 等）
@@ -104,6 +115,8 @@ ConfigContextMenu.init()
 Log.info('Starting')
 Log.info('LaunchInfo', {
     isPackaged,
+    version: AppConfig.version,
+    buildId: readBuildId(),
     userData: AppEnv.userData,
     dataRoot: AppEnv.dataRoot,
 })
