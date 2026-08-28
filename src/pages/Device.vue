@@ -17,6 +17,7 @@ import DeviceFileManagerDialog from './Device/DeviceFileManagerDialog.vue'
 import DeviceFilterEmpty from './Device/DeviceFilterEmpty.vue'
 import DeviceGroupSelectDialog from './Device/DeviceGroupSelectDialog.vue'
 import DeviceGroupSettingDialog from './Device/DeviceGroupSettingDialog.vue'
+import DeviceMirrorDiagnoseDialog from './Device/DeviceMirrorDiagnoseDialog.vue'
 import DeviceItem from './Device/DeviceItem.vue'
 import DevicePairingCodeDialog from './Device/DevicePairingCodeDialog.vue'
 import DeviceSettingDialog from './Device/DeviceSettingDialog.vue'
@@ -34,6 +35,7 @@ const pairingCodeDialog = ref<InstanceType<typeof DevicePairingCodeDialog> | nul
 const defaultSettingDialog = ref<InstanceType<typeof DeviceDefaultSettingDialog> | null>(null)
 const groupSettingDialog = ref<InstanceType<typeof DeviceGroupSettingDialog> | null>(null)
 const groupSelectDialog = ref<InstanceType<typeof DeviceGroupSelectDialog> | null>(null)
+const mirrorDiagnoseDialog = ref<InstanceType<typeof DeviceMirrorDiagnoseDialog> | null>(null)
 
 const deviceStore = useDeviceStore()
 
@@ -312,11 +314,30 @@ onUnmounted(() => {
                             </template>
                         </a-button>
                         <template #content>
-                            <a-doption @click="groupSettingDialog?.show()">{{ $t('device.groupSettings') }}</a-doption>
-                            <a-doption @click="shellDialog?.show()">{{ $t('device.commandLineTool') }}</a-doption>
-                            <a-doption @click="defaultSettingDialog?.show()">{{
-                                $t('device.defaultSettings')
-                            }}</a-doption>
+                            <a-doption @click="groupSettingDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-folder-cog />
+                                </template>
+                                {{ $t('device.groupSettings') }}
+                            </a-doption>
+                            <a-doption @click="shellDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-terminal />
+                                </template>
+                                {{ $t('device.commandLineTool') }}
+                            </a-doption>
+                            <a-doption @click="mirrorDiagnoseDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-stethoscope />
+                                </template>
+                                {{ $t('device.diagnose') }}
+                            </a-doption>
+                            <a-doption @click="defaultSettingDialog?.show()">
+                                <template #icon>
+                                    <i-lucide-sliders-horizontal />
+                                </template>
+                                {{ $t('device.defaultSettings') }}
+                            </a-doption>
                         </template>
                     </a-dropdown>
                 </template>
@@ -350,6 +371,7 @@ onUnmounted(() => {
     <DeviceDefaultSettingDialog ref="defaultSettingDialog" />
     <DeviceGroupSettingDialog ref="groupSettingDialog" />
     <DeviceGroupSelectDialog ref="groupSelectDialog" />
+    <DeviceMirrorDiagnoseDialog ref="mirrorDiagnoseDialog" />
 </template>
 
 <style scoped lang="less">

@@ -33,6 +33,9 @@ const doWifiOn = async () => {
 
 <template>
     <a-doption @click="doWifiOn">
+        <template #icon>
+            <i-lucide-wifi />
+        </template>
         {{ $t('device.addAsNetworkDevice') }}
     </a-doption>
 </template>

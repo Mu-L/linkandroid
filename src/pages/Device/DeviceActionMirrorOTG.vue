@@ -35,6 +35,9 @@ const doMirror = async () => {
 
 <template>
     <a-doption @click="doMirror">
+        <template #icon>
+            <i-lucide-usb />
+        </template>
         {{ $t('device.enterOTGMode') }}
     </a-doption>
 </template>

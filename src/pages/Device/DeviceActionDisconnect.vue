@@ -27,6 +27,9 @@ const doDisconnect = async () => {
 
 <template>
     <a-doption @click="doDisconnect">
+        <template #icon>
+            <i-lucide-unplug />
+        </template>
         {{ $t('device.disconnect') }}
     </a-doption>
 </template>

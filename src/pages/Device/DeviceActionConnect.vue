@@ -27,6 +27,9 @@ const doConnect = async () => {
 
 <template>
     <a-doption @click="doConnect">
+        <template #icon>
+            <i-lucide-plug />
+        </template>
         {{ $t('device.connect') }}
     </a-doption>
 </template>

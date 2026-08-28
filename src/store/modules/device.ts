@@ -22,6 +22,9 @@ function escapeHtml(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// scrcpy stderr 中命中任一关键词即视为投屏失败（避免 scrcpy 版本 banner 出现在 stdout 时静默吞掉失败）
+const MIRROR_ERROR_KEYWORDS = ['error', 'failed', 'could not', 'unable', 'cannot', 'exception', 'not found']
+
 const getEmptySetting = () => {
     return JSON.parse(
         JSON.stringify({
@@ -51,6 +54,14 @@ const wsMaxReconnectAttempts = 10
 const wsReconnectDelay = 3000
 
 const deviceControllers = new Map<string, ShellController>()
+
+// 用户主动停止的 DeviceManage（stop() 强杀进程会以非 0 退出码结束，需要与
+// 意外失败区分开，避免触发自动重试）
+const deviceManageStopped = new Set<string>()
+
+// DeviceManage 启动串行队列：多台设备同时启动会并发抢占 adb reverse 端口导致
+// 大部分启动失败，所以按固定间隔错峰串行启动
+let deviceManageStartChain: Promise<void> = Promise.resolve()
 
 const shouldStartDeviceManage = (record: DeviceRecord) => {
     return !window.__TEST_MODE__ && !isSeedConnectedDevice(record)
@@ -242,9 +253,39 @@ const handlePanelButtonClick = async (deviceId: string, buttonId: string) => {
     }
 }
 
-// 启动 debug_manage
+// startDeviceManage 串行排队执行：多台设备同时启动会并发抢占 adb reverse 端口，
+// 导致大部分 DeviceManage 启动失败（scrcpy 报 "adb reverse returned with value 1"）。
+// 通过链式队列 + 固定间隔错峰启动，并在失败后自动重试。
 const startDeviceManage = async (deviceId: string) => {
+    const task = deviceManageStartChain
+        .catch(() => {})
+        .then(() => new Promise<void>((resolve) => setTimeout(resolve, 400)))
+        .then(async () => {
+            await doStartDeviceManage(deviceId)
+        })
+    deviceManageStartChain = task
+    await task
+}
+
+// DeviceManage 启动失败后自动重试（设备仍保持连接且未被主动停止时）
+const scheduleDeviceManageRetry = (deviceId: string) => {
+    setTimeout(() => {
+        if (!deviceManageStopped.has(deviceId)) {
+            const device = deviceStore().records.find((r) => r.id === deviceId)
+            if (device && device.status === EnumDeviceStatus.CONNECTED) {
+                startDeviceManage(deviceId)
+            }
+        }
+    }, 3000)
+}
+
+// 启动 debug_manage（管理模式：预览+无视频音频播放）
+const doStartDeviceManage = async (deviceId: string) => {
     try {
+        // 启动流程开始即视为需要运行，清除可能遗留的停止标记
+        // （避免上次 stopDeviceManage 流程遗留的标记导致本次无法启动）
+        deviceManageStopped.delete(deviceId)
+
         // 如果已经在运行,先停止
         if (deviceControllers.has(deviceId)) {
             await stopDeviceManage(deviceId)
@@ -252,7 +293,6 @@ const startDeviceManage = async (deviceId: string) => {
 
         const wsAddress = await $mapi.serve.getAddress()
 
-        // 启动 debug_manage (管理模式：预览+无视频音频播放)
         const wsUrl = `${wsAddress}/server?type=DeviceManage&deviceId=${deviceId}`
         const controller = await $mapi.scrcpy.spawnShell(
             [
@@ -276,29 +316,48 @@ const startDeviceManage = async (deviceId: string) => {
                 stderr: (data: string) => {
                     window.$mapi.log.info('Render.DeviceManage.stderr', {deviceId, data})
                 },
-                success: () => {
-                    window.$mapi.log.info('Render.DeviceManage.success', {deviceId})
+                success: (process: any) => {
+                    // Windows 下 scrcpy 启动失败（adb reverse 冲突/连接失败）以
+                    // exitCode=1 退出，App.spawnShell 会把它当作"成功"，这里手动
+                    // 识别非 0 退出码并触发自动重试
+                    const exitCode = process?.exitCode
+                    window.$mapi.log.info('Render.DeviceManage.success', {deviceId, exitCode})
                     deviceControllers.delete(deviceId)
+                    if (deviceManageStopped.has(deviceId)) {
+                        deviceManageStopped.delete(deviceId)
+                        return
+                    }
+                    if (exitCode !== 0 && exitCode !== null && exitCode !== undefined) {
+                        window.$mapi.log.error('DeviceManage exited abnormally, will retry', {
+                            deviceId,
+                            exitCode,
+                        })
+                        scheduleDeviceManageRetry(deviceId)
+                    }
                 },
                 error: (msg: string, exitCode: number) => {
                     window.$mapi.log.error('Render.DeviceManage.error', {deviceId, msg, exitCode})
                     deviceControllers.delete(deviceId)
-                    setTimeout(() => {
-                        const device = deviceStore().records.find((r) => r.id === deviceId)
-                        if (device && device.status === EnumDeviceStatus.CONNECTED) {
-                            startDeviceManage(deviceId)
-                        }
-                    }, 5000)
+                    if (deviceManageStopped.has(deviceId)) {
+                        deviceManageStopped.delete(deviceId)
+                        return
+                    }
+                    scheduleDeviceManageRetry(deviceId)
                 },
             },
         )
         deviceControllers.set(deviceId, controller)
     } catch (error) {
         window.$mapi.log.error('Failed to start debug_manage:', {deviceId, error})
+        if (!deviceManageStopped.has(deviceId)) {
+            scheduleDeviceManageRetry(deviceId)
+        }
     }
 }
 
 const stopDeviceManage = async (deviceId: string) => {
+    // 标记为主动停止，避免强杀进程后的非 0 退出码触发自动重试
+    deviceManageStopped.add(deviceId)
     const controller = deviceControllers.get(deviceId)
     if (controller) {
         try {
@@ -402,6 +461,8 @@ export const deviceStore = defineStore('device', {
 
                         // 自动启动 debug_manage
                         if (shouldStartDeviceManage(record)) {
+                            // 设备重新连接后清除停止标记，允许自动重启
+                            deviceManageStopped.delete(record.id)
                             startDeviceManage(record.id)
                         }
                     }
@@ -577,7 +638,14 @@ export const deviceStore = defineStore('device', {
                         $mapi.log.info('Mirror.success', {successShown, logs})
                         runtime.value.mirrorController = null
                         $mapi.power.stop()
-                        if (!successShown && !logs.some((l) => l.startsWith('[stdout]'))) {
+                        const hasMirrorError = logs.some(
+                            (l) =>
+                                l.startsWith('[stderr]') &&
+                                MIRROR_ERROR_KEYWORDS.some((kw) => l.toLowerCase().includes(kw)),
+                        )
+                        // 只有当"既没成功弹起投屏"且（stderr 含错误信息 或 完全没有 stdout）时才提示失败，
+                        // 避免 scrcpy 版本 banner 在 stdout 输出导致失败被静默吞掉
+                        if (!successShown && (hasMirrorError || !logs.some((l) => l.startsWith('[stdout]')))) {
                             const logText = logs.map((l) => l.replace(/^\[(stdout|stderr)\] /, '')).join('\n')
                             const detail = logText ? `\n\n<pre>${escapeHtml(logText)}</pre>` : ''
                             Dialog.alertError(t('device.mirrorFailed') + (detail ? ` : ${detail}` : ''))

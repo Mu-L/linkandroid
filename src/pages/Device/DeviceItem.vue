@@ -161,15 +161,27 @@ const onEditName = async (device: DeviceRecord, name: string) => {
                         <DeviceActionMirrorCamera :device="record" @camera="emit('camera')" />
                         <DeviceActionMirrorOTG v-if="record.type === EnumDeviceType.USB" :device="record" />
                         <a-doption @click="emit('adbShell')">
+                            <template #icon>
+                                <i-lucide-terminal />
+                            </template>
                             {{ $t('device.commandLine') }}
                         </a-doption>
                         <a-doption v-if="rIndex > 0" @click="deviceStore.doTop(rIndex)">
+                            <template #icon>
+                                <i-lucide-pin />
+                            </template>
                             {{ $t('device.pinTop') }}
                         </a-doption>
                         <a-doption @click="emit('setting')">
+                            <template #icon>
+                                <i-lucide-settings />
+                            </template>
                             {{ $t('device.settings') }}
                         </a-doption>
                         <a-doption v-if="record.status === EnumDeviceStatus.DISCONNECTED" @click="doDelete(record)">
+                            <template #icon>
+                                <i-lucide-trash-2 />
+                            </template>
                             {{ $t('device.delete') }}
                         </a-doption>
                     </template>

@@ -65,7 +65,10 @@ type DefsMapi = {
                 outputEncoding?: string
                 shell?: boolean
             },
-        ) => Promise<void>
+        ) => Promise<{
+            stdout: string
+            stderr: string
+        }>
         spawnShell: (
             command: string | string[],
             option: {

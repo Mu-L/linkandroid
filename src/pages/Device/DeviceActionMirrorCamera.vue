@@ -16,6 +16,9 @@ const doOpenCamera = () => {
 
 <template>
     <a-doption @click="doOpenCamera">
+        <template #icon>
+            <i-lucide-camera />
+        </template>
         {{ $t('device.openCamera') }}
     </a-doption>
 </template>
