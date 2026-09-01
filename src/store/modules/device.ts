@@ -4,7 +4,7 @@ import {computed, ComputedRef, ref, toRaw} from 'vue'
 import {t} from '../../lang'
 import {Dialog} from '../../lib/dialog'
 import {mapError} from '../../lib/error'
-import {isIPWithPort} from '../../lib/linkandroid'
+import {isIPWithPort, parseIPPort} from '../../lib/linkandroid'
 
 import {
     DeviceGroup,
@@ -534,6 +534,43 @@ export const deviceStore = defineStore('device', {
             record.setting = Object.assign({}, record.setting, setting)
             updateDeviceRuntime(record)
             await this.sync()
+        },
+        async updateNetworkPort(device: DeviceRecord, port: number) {
+            if (device.type !== EnumDeviceType.WIFI || !isIPWithPort(device.id)) {
+                return
+            }
+            const {ip, port: currentPort} = parseIPPort(device.id)
+            if (port === currentPort) {
+                return
+            }
+
+            await $mapi.adb.connect(ip, port)
+            await this.refresh()
+
+            const newId = `${ip}:${port}`
+            const updatedRecord = this.records.find((record) => record.id === newId)
+            if (!updatedRecord) {
+                throw new Error('DeviceNotConnected')
+            }
+
+            const oldId = device.id
+            Object.assign(updatedRecord, {
+                name: device.name,
+                setting: device.setting,
+            })
+            for (const group of this.groups) {
+                if (group.deviceIds.includes(oldId)) {
+                    group.deviceIds = group.deviceIds.map((id) => (id === oldId ? newId : id))
+                }
+            }
+            this.records = this.records.filter((record) => record.id !== oldId)
+            await this.syncGroups()
+            await this.sync()
+
+            // Close the stale endpoint after the replacement connection is ready.
+            try {
+                await $mapi.adb.disconnect(ip, currentPort)
+            } catch (e) {}
         },
         async sync() {
             const savedRecords = toRaw(cloneDeep(this.records))

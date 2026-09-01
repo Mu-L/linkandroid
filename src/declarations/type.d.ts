@@ -446,6 +446,7 @@ type DefsMapi = {
             device?: any
             error?: string
         }>
+        scannerCancel: () => Promise<{success: boolean}>
     }
     scrcpy: {
         getBinPath: (returnEmptyWhenDefault: boolean = false) => Promise<string>

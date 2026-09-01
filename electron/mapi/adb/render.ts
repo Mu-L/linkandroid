@@ -8,6 +8,7 @@ import {FileUtil, TimeUtil} from '../../lib/util'
 import {Apps} from '../app'
 
 let client = null
+let activeScannerCallbackId: string | null = null
 window.addEventListener('beforeunload', () => {
     // destroy()
 })
@@ -346,6 +347,7 @@ const pair = async (
 const scannerConnect = async (password: string, onStatus?: (status: string, error?: string) => void) => {
     // 生成唯一的回调 ID
     const callbackId = Math.random().toString(36).substring(2)
+    activeScannerCallbackId = callbackId
 
     console.log('[Render] scannerConnect start, callbackId:', callbackId)
 
@@ -380,7 +382,15 @@ const scannerConnect = async (password: string, onStatus?: (status: string, erro
         // 清理监听器
         console.log('[Render] Cleaning up listener:', channelName)
         ipcRenderer.removeAllListeners(channelName)
+        if (activeScannerCallbackId === callbackId) {
+            activeScannerCallbackId = null
+        }
     }
+}
+
+const scannerCancel = async () => {
+    if (!activeScannerCallbackId) return {success: true}
+    return await ipcRenderer.invoke('adb:scannerCancel', activeScannerCallbackId)
 }
 
 export default {
@@ -408,6 +418,7 @@ export default {
     info,
     pair,
     scannerConnect,
+    scannerCancel,
 }
 
 export const ADB = {

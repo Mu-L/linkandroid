@@ -145,6 +145,8 @@ const messages: Messages = {
     'device.connectPortHint': '(shown at top of wireless debugging)',
     'device.connectPortPlaceholder': 'e.g.: 44699',
     'device.connectPortRequired': 'Please enter Connect Port',
+    'device.wirelessPortChangeHint':
+        'The port may change when wireless debugging is enabled again. You can modify it here.',
     'device.connectSuccess': 'Device connected successfully',
     'device.connectSuccessShort': 'Connected successfully',
     'device.connectUsb': 'Connect to computer via USB',

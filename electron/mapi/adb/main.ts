@@ -21,6 +21,8 @@ const ERROR_CODES = {
     INVALID_PARAMS: 'INVALID_PARAMS',
 }
 
+const activeScanners = new Map<string, AdbScanner>()
+
 interface DeviceData {
     name: string
     address: string
@@ -107,6 +109,15 @@ class AdbScanner {
     private isActive = false
     private window: BrowserWindow | null = null
     private callbackId: string = ''
+    private scanReject: ((error: Error) => void) | null = null
+    private connectReject: ((error: Error) => void) | null = null
+
+    cancel() {
+        this.isActive = false
+        this.scanReject?.(new MonitorError(ERROR_CODES.TIMEOUT, 'Connection attempt cancelled'))
+        this.connectReject?.(new MonitorError(ERROR_CODES.TIMEOUT, 'Device connect cancelled'))
+        this.dispose()
+    }
 
     async connect(window: BrowserWindow, callbackId: string, password: string) {
         this.window = window
@@ -127,17 +138,8 @@ class AdbScanner {
 
             this.sendStatus('connecting')
 
-            try {
-                const connectDevice = await this.waitForDeviceConnect(device)
-                await this.connectToDevice(connectDevice)
-            } catch (error) {
-                console.log('[Main] 标准连接失败，尝试备用端口 5555')
-                this.sendStatus('connecting-fallback')
-                await this.connectToDevice({
-                    ...device,
-                    port: 5555,
-                })
-            }
+            const connectDevice = await this.waitForDeviceConnect(device)
+            await this.connectToDevice(connectDevice)
 
             this.sendStatus('connected')
 
@@ -194,6 +196,7 @@ class AdbScanner {
         })
 
         return new Promise((resolve, reject) => {
+            this.scanReject = reject
             let deviceFound = false
 
             const timeoutHandle = setTimeout(() => {
@@ -220,6 +223,7 @@ class AdbScanner {
                     // 清理备用扫描器
                     if (altScanner) altScanner.dispose()
                     resolve(device)
+                    this.scanReject = null
                 }
             }
 
@@ -287,6 +291,7 @@ class AdbScanner {
     private async waitForDeviceConnect(device: DeviceData): Promise<DeviceData> {
         console.log('[Main] 等待设备连接服务广播...')
         return new Promise((resolve, reject) => {
+            this.connectReject = reject
             let deviceFound = false
             const scanner = new DeviceScanner()
             const altScanner = new DeviceScanner()
@@ -301,13 +306,14 @@ class AdbScanner {
             }, MDNS_CONFIG.CONNECT_TIMEOUT)
 
             const handleConnect = (connectDevice: DeviceData) => {
-                if (!deviceFound && connectDevice.address === device.address) {
+                if (!deviceFound && (connectDevice.address === device.address || connectDevice.name === device.name)) {
                     deviceFound = true
                     console.log('[Main] 发现连接服务:', connectDevice)
                     clearTimeout(timeoutHandle)
                     scanner.dispose()
                     altScanner.dispose()
                     resolve(connectDevice)
+                    this.connectReject = null
                 }
             }
 
@@ -378,11 +384,19 @@ ipcMain.handle('adb:scannerConnect', async (event, password: string, callbackId:
         }
 
         console.log('[Main] 开始执行扫描连接...')
+        activeScanners.set(callbackId, scanner)
         return await scanner.connect(window, callbackId, password)
     } catch (error: any) {
         console.error('[Main] scannerConnect 处理失败:', error)
         return {success: false, error: error.message || String(error)}
+    } finally {
+        activeScanners.delete(callbackId)
     }
+})
+
+ipcMain.handle('adb:scannerCancel', async (_event, callbackId: string) => {
+    activeScanners.get(callbackId)?.cancel()
+    return {success: true}
 })
 
 export default {}

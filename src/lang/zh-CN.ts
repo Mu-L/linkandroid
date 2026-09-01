@@ -145,6 +145,7 @@ const messages: Messages = {
     'device.connectPortHint': '(无线调试页面顶部显示)',
     'device.connectPortPlaceholder': '例如: 44699',
     'device.connectPortRequired': '请输入连接端口',
+    'device.wirelessPortChangeHint': '无线调试重新开启后端口可能变化，可在此修改',
     'device.connectSuccess': '设备连接成功',
     'device.connectSuccessShort': '连接成功',
     'device.connectUsb': '使用USB连接电脑',

@@ -4,7 +4,10 @@ import {testActionSet, testActionUnset} from '../../utils/test'
 import SettingItemYesNoDefault from '../../components/common/SettingItemYesNoDefault.vue'
 import {t} from '../../lang'
 import {useDeviceStore} from '../../store/modules/device'
-import {DeviceRecord} from '../../types/Device'
+import {DeviceRecord, EnumDeviceType} from '../../types/Device'
+import {Dialog} from '../../lib/dialog'
+import {mapError} from '../../lib/error'
+import {parseIPPort} from '../../lib/linkandroid'
 
 const deviceStore = useDeviceStore()
 const visible = ref(false)
@@ -19,6 +22,7 @@ const formData = ref({
     panelShow: '',
     powerSaveBlock: '',
     windowBorderless: '',
+    port: '',
 })
 
 const bitratePresets = ['2M', '4M', '6M', '8M', '10M', '12M', '16M', '20M', '40M', '50M']
@@ -71,23 +75,43 @@ const show = (record: DeviceRecord) => {
     formData.value.panelShow = record.setting?.panelShow || ''
     formData.value.powerSaveBlock = record.setting?.powerSaveBlock || ''
     formData.value.windowBorderless = record.setting?.windowBorderless || ''
+    formData.value.port = record.type === EnumDeviceType.WIFI ? String(parseIPPort(record.id).port) : ''
     visible.value = true
 }
 
 const doSubmit = async () => {
-    await deviceStore.updateSetting(device.value!.id, {
-        dimWhenMirror: formData.value.dimWhenMirror,
-        alwaysTop: formData.value.alwaysTop,
-        mirrorSound: formData.value.mirrorSound,
-        previewImage: formData.value.previewImage,
-        videoBitRate: formData.value.videoBitRate,
-        maxFps: formData.value.maxFps,
-        scrcpyArgs: formData.value.scrcpyArgs,
-        panelShow: formData.value.panelShow,
-        powerSaveBlock: formData.value.powerSaveBlock,
-        windowBorderless: formData.value.windowBorderless,
-    })
-    visible.value = false
+    if (!device.value) return
+    const networkPort = parseInt(formData.value.port)
+    if (
+        device.value.type === EnumDeviceType.WIFI &&
+        (!Number.isInteger(networkPort) || networkPort < 1 || networkPort > 65535)
+    ) {
+        Dialog.tipError(t('device.connectPortRequired'))
+        return
+    }
+    Dialog.loadingOn(t('device.connecting'))
+    try {
+        await deviceStore.updateSetting(device.value.id, {
+            dimWhenMirror: formData.value.dimWhenMirror,
+            alwaysTop: formData.value.alwaysTop,
+            mirrorSound: formData.value.mirrorSound,
+            previewImage: formData.value.previewImage,
+            videoBitRate: formData.value.videoBitRate,
+            maxFps: formData.value.maxFps,
+            scrcpyArgs: formData.value.scrcpyArgs,
+            panelShow: formData.value.panelShow,
+            powerSaveBlock: formData.value.powerSaveBlock,
+            windowBorderless: formData.value.windowBorderless,
+        })
+        if (device.value.type === EnumDeviceType.WIFI) {
+            await deviceStore.updateNetworkPort(device.value, networkPort)
+        }
+        visible.value = false
+    } catch (error) {
+        Dialog.tipError(mapError(error))
+    } finally {
+        Dialog.loadingOff()
+    }
 }
 
 const fillForm = (data: Partial<typeof formData.value>) => {
@@ -133,6 +157,15 @@ defineExpose({
                 <div>
                     <div class="font-bold text-xl mb-3">
                         {{ $t('device.title') }}
+                    </div>
+                    <div v-if="device?.type === EnumDeviceType.WIFI" class="flex mb-3">
+                        <div class="flex-grow">
+                            <div>{{ $t('device.port') }}</div>
+                            <div class="text-gray-400 text-xs">{{ $t('device.wirelessPortChangeHint') }}</div>
+                        </div>
+                        <div>
+                            <a-input v-model="formData.port" style="width: 16rem" />
+                        </div>
                     </div>
                     <div class="flex mb-3">
                         <div class="flex-grow">{{ $t('device.dimWhenMirror') }}</div>

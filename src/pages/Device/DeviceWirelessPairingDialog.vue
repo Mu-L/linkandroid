@@ -15,6 +15,7 @@ const pairingStatus = ref<'waiting' | 'pairing' | 'connecting' | 'connecting-fal
 )
 const statusMessage = ref('')
 let countDownTimer: any = null
+let pairingGeneration = 0
 
 const emit = defineEmits({
     update: () => true,
@@ -26,6 +27,8 @@ const show = async () => {
 }
 
 const hide = () => {
+    pairingGeneration++
+    void window.$mapi.adb.scannerCancel()
     visible.value = false
     stopCountDown()
     qrcodeUrl.value = ''
@@ -35,6 +38,7 @@ const hide = () => {
 }
 
 const startPairingService = async () => {
+    const generation = ++pairingGeneration
     try {
         Dialog.loadingOn(t('device.generatingQrcode'))
 
@@ -67,6 +71,7 @@ const startPairingService = async () => {
 
         try {
             const result = await window.$mapi.adb.scannerConnect(password, (status: string, error?: string) => {
+                if (generation !== pairingGeneration) return
                 console.log('Pairing status update:', status, error)
                 if (status === 'pairing') {
                     pairingStatus.value = 'pairing'
@@ -88,6 +93,8 @@ const startPairingService = async () => {
 
             console.log('Pairing result:', result)
 
+            if (generation !== pairingGeneration) return
+
             if (result.success) {
                 Dialog.tipSuccess(t('device.qrcodePairingSuccess'))
                 emit('update')
@@ -98,6 +105,7 @@ const startPairingService = async () => {
                 Dialog.tipError(t('device.pairingFailedWithError', {error: result.error}))
             }
         } catch (connectError) {
+            if (generation !== pairingGeneration) return
             console.error('scannerConnect call error:', connectError)
             Dialog.tipError(t('device.pairingProcessError', {error: connectError}))
             pairingStatus.value = 'error'
