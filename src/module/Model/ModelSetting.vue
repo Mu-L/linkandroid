@@ -50,7 +50,6 @@ const keywords = ref('')
 const currentProviderId = ref('')
 
 const doSelectProvider = (id: string) => {
-    
     currentProviderId.value = id
 }
 const provider = computed(() => {
