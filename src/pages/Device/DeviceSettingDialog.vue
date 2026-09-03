@@ -22,6 +22,7 @@ const formData = ref({
     panelShow: '',
     powerSaveBlock: '',
     windowBorderless: '',
+    host: '',
     port: '',
 })
 
@@ -76,18 +77,24 @@ const show = (record: DeviceRecord) => {
     formData.value.powerSaveBlock = record.setting?.powerSaveBlock || ''
     formData.value.windowBorderless = record.setting?.windowBorderless || ''
     formData.value.port = record.type === EnumDeviceType.WIFI ? String(parseIPPort(record.id).port) : ''
+    formData.value.host = record.type === EnumDeviceType.WIFI ? parseIPPort(record.id).ip : ''
     visible.value = true
 }
 
 const doSubmit = async () => {
     if (!device.value) return
-    const networkPort = parseInt(formData.value.port)
-    if (
-        device.value.type === EnumDeviceType.WIFI &&
-        (!Number.isInteger(networkPort) || networkPort < 1 || networkPort > 65535)
-    ) {
-        Dialog.tipError(t('device.connectPortRequired'))
-        return
+    if (device.value.type === EnumDeviceType.WIFI) {
+        const host = formData.value.host.trim()
+        const portStr = formData.value.port.trim()
+        if (!host || !portStr) {
+            Dialog.tipError(t('device.connectPortRequired'))
+            return
+        }
+        const networkPort = parseInt(portStr)
+        if (!Number.isInteger(networkPort) || networkPort < 1 || networkPort > 65535) {
+            Dialog.tipError(t('device.connectPortRequired'))
+            return
+        }
     }
     Dialog.loadingOn(t('device.connecting'))
     try {
@@ -104,7 +111,7 @@ const doSubmit = async () => {
             windowBorderless: formData.value.windowBorderless,
         })
         if (device.value.type === EnumDeviceType.WIFI) {
-            await deviceStore.updateNetworkPort(device.value, networkPort)
+            await deviceStore.updateNetworkPort(device.value, formData.value.host.trim(), parseInt(formData.value.port.trim()))
         }
         visible.value = false
     } catch (error) {
@@ -160,8 +167,17 @@ defineExpose({
                     </div>
                     <div v-if="device?.type === EnumDeviceType.WIFI" class="flex mb-3">
                         <div class="flex-grow">
+                            <div>{{ $t('device.ipAddress') }}</div>
+                            <div class="text-gray-400 text-xs">无线调试重新开启后 IP 可能变化</div>
+                        </div>
+                        <div>
+                            <a-input v-model="formData.host" style="width: 16rem" />
+                        </div>
+                    </div>
+                    <div v-if="device?.type === EnumDeviceType.WIFI" class="flex mb-3">
+                        <div class="flex-grow">
                             <div>{{ $t('device.port') }}</div>
-                            <div class="text-gray-400 text-xs">{{ $t('device.wirelessPortChangeHint') }}</div>
+                            <div class="text-gray-400 text-xs">无线调试重新开启后端口可能变化</div>
                         </div>
                         <div>
                             <a-input v-model="formData.port" style="width: 16rem" />

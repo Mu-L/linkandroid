@@ -535,42 +535,51 @@ export const deviceStore = defineStore('device', {
             updateDeviceRuntime(record)
             await this.sync()
         },
-        async updateNetworkPort(device: DeviceRecord, port: number) {
-            if (device.type !== EnumDeviceType.WIFI || !isIPWithPort(device.id)) {
+        async updateNetworkPort(device: DeviceRecord, host: string, port: number) {
+            if (device.type !== EnumDeviceType.WIFI) {
                 return
             }
-            const {ip, port: currentPort} = parseIPPort(device.id)
-            if (port === currentPort) {
+            const newId = `${host}:${port}`
+            if (newId === device.id) {
                 return
-            }
-
-            await $mapi.adb.connect(ip, port)
-            await this.refresh()
-
-            const newId = `${ip}:${port}`
-            const updatedRecord = this.records.find((record) => record.id === newId)
-            if (!updatedRecord) {
-                throw new Error('DeviceNotConnected')
             }
 
             const oldId = device.id
-            Object.assign(updatedRecord, {
-                name: device.name,
-                setting: device.setting,
-            })
+
+            // 1. Disconnect the old address first — removes it from adb devices,
+            //    so any concurrent refresh() triggered by adb.watch won't re-add it.
+            try {
+                if (isIPWithPort(device.id)) {
+                    const {ip: oldIp, port: oldPort} = parseIPPort(device.id)
+                    await $mapi.adb.disconnect(oldIp, oldPort)
+                }
+            } catch (e) {}
+
+            // 2. Update the existing record in-place — no duplicate possible
+            const record = this.records.find((r) => r.id === oldId)
+            if (record) {
+                record.id = newId
+                record.raw = {...record.raw, id: newId}
+                const runtime = deviceRuntime.value.get(oldId)
+                if (runtime) {
+                    deviceRuntime.value.delete(oldId)
+                    deviceRuntime.value.set(newId, runtime)
+                }
+            }
+
+            // 3. Migrate groups to the new id
             for (const group of this.groups) {
                 if (group.deviceIds.includes(oldId)) {
                     group.deviceIds = group.deviceIds.map((id) => (id === oldId ? newId : id))
                 }
             }
-            this.records = this.records.filter((record) => record.id !== oldId)
             await this.syncGroups()
-            await this.sync()
 
-            // Close the stale endpoint after the replacement connection is ready.
-            try {
-                await $mapi.adb.disconnect(ip, currentPort)
-            } catch (e) {}
+            // 4. Connect to the new address
+            await $mapi.adb.connect(host, port)
+
+            // 5. Refresh to pick up the correct status
+            await this.refresh()
         },
         async sync() {
             const savedRecords = toRaw(cloneDeep(this.records))

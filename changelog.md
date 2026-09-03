@@ -1,7 +1,7 @@
 ## [Unreleased]
 
 ### 新增
-- 新增：无线设备「设备设置」支持修改连接端口，保存后自动连接新端口并迁移原设备配置
+- 新增：无线设备「设备设置」支持修改连接 IP 和端口，保存后自动更新连接并迁移原设备配置，避免重复设备
 - 新增：数据目录支持 `LINKANDROID_DATA_ROOT` 环境变量覆盖，正式安装版可由 macOS Info.plist 注入，实现正式数据与开发测试隔离
 - 新增：任务脚本新增 `la.findOrNull()` / `la.findOrNone()` API（未找到元素返回 None）及 `la.ElementNotFoundError` 异常导出，使用手册同步更新
 - 新增：task run 支持 `--device` 参数、`/api/task/run` 支持可选 deviceId；无在线设备时返回明确错误提示
